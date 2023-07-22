@@ -99,9 +99,6 @@ class DataCleaner:
             sub_df: pd.DataFrame = group_by.get_group(date)
             sub_df.to_csv(data_file_path, index=False)
 
-
-
-
     @staticmethod
     def clean_data():
         """Cleans all raw data files in folder: ./data/raw/**/*"""
@@ -123,9 +120,8 @@ def main(args):
 
 
 if __name__ == '__main__':
-    # TODO: Implement argparse with arguments for fetching and cleaning.
     parser = argparse.ArgumentParser(prog='Stock data collector', description='Gathers and cleans data.')
     parser.add_argument('-c', '--clean', action='store_true', help='Cleans data if set.')
-    parser.add_argument('-g', '--gather', type=str, nargs='+', help='List of stock symbols. E.g. TSLA AAPL')
+    parser.add_argument('-g', '--gather', action='store_true', help='List of stock symbols. E.g. TSLA AAPL')
 
     main(parser.parse_args())

@@ -1,4 +1,4 @@
-import indicators
+import indicator
 import numpy as np
 import pandas as pd
 
@@ -7,7 +7,7 @@ import pandas as pd
 class TestIndicators:
     @staticmethod
     def test_sma():
-        sma = indicators.SMA(2)
+        sma = indicator.SMA(2)
         data = pd.Series(np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
 
         # SMA with 2 sample mean.
@@ -19,7 +19,7 @@ class TestIndicators:
 
     @staticmethod
     def test_ema():
-        ema = indicators.EMA(0.5)
+        ema = indicator.EMA(0.5)
         data = pd.Series(np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
 
         indication = ema.indicate(data)
@@ -30,7 +30,7 @@ class TestIndicators:
 
     @staticmethod
     def test_bb():
-        bb = indicators.BB(3, 1)
+        bb = indicator.BB(3, 1)
         data = pd.Series(np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
 
         indication = bb.indicate(data)

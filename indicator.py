@@ -42,7 +42,7 @@ class BB(Indicator):
     samples: int
     std_dev: float
 
-    def indicate(self, data: pd.Series):
+    def indicate(self, data: pd.Series) -> pd.Series:
         """Bollinger band created indentically to SMA but offset by std_dev standard deviations. Returns indicator
         values as pd.Series of same length as data.
         """

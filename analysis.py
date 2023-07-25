@@ -6,6 +6,7 @@ import pandas as pd
 import random
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from pprint import PrettyPrinter
 
@@ -62,37 +63,19 @@ class StrategySMA(Strategy):
             return 0
 
     def __str__(self):
-        return f'Strategy: Evaluate {self.indicator_labels()} and act: Random.'
-
-
-def validate_actions(data_in: pd.DataFrame) -> pd.DataFrame:
-    data_valid = data_in.copy(deep=True)
-    nr_shares = 0
-
-    for index, row in data_valid.iterrows():
-        action = row['action']
-
-        if action > 0:
-            nr_shares += action
-        elif action < 0:
-            if abs(action) > nr_shares:
-                action = -nr_shares
-                data_valid.at[index, 'action'] = action
-            nr_shares += action
-
-    return data_valid
+        return f'strategy_{"_".join(self.indicator_labels())}'
 
 
 class Simulator:
-    WINDOW = 100
+    WINDOW = 100  # TODO: Should this be hardcoded or up to the strategy to decide?
 
     @staticmethod
     def prepare_dataframe(strategy: Strategy, df: pd.DataFrame) -> pd.DataFrame:
         # Keep the 'date', 'time', 'close' and add the indicator columns.
         df_ret = pd.DataFrame()
 
-        df_ret['date'] = df['date']
-        df_ret['time'] = df['time']
+        df_ret['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+        df_ret['time'] = pd.to_datetime(df['time'], format='%H:%M:%S')
         df_ret['close'] = df['close']
 
         for ind in strategy.indicators:
@@ -101,29 +84,42 @@ class Simulator:
         return df_ret
 
     @staticmethod
-    def run_period(strategy: Strategy, data_file) -> pd.DataFrame:
+    def validate_actions(data_in: pd.DataFrame) -> pd.DataFrame:
+        """Validates the 'action' column so that we can only sell when we have stocks."""
+        data_valid = data_in.copy(deep=True)
+        nr_shares = 0
+
+        for index, row in data_valid.iterrows():
+            action = row['action']
+
+            if action > 0:
+                nr_shares += action
+            elif action < 0:
+                if abs(action) > nr_shares:
+                    action = -nr_shares
+                    data_valid.at[index, 'action'] = action
+                nr_shares += action
+
+        return data_valid
+
+    @staticmethod
+    def run_period(strategy: Strategy, data_path: Path) -> pd.DataFrame:
         """Simulates single period. Returns DataFrame with additional 'actions' column."""
-        data_clean: pd.DataFrame = pd.read_csv(data_file)
+        data_clean: pd.DataFrame = pd.read_csv(data_path)
 
         # Create DataFrame section with indicator values.
         data_out = Simulator.prepare_dataframe(strategy, data_clean)
 
-        # Read datetimes. Only supports single day periods.
-        # date: str = data_in['date'][0]
-        # time_start: str = data_in['time'][0]
-        # time_end: str = data_in['time'].iloc[-1]
-        # date_time_start = datetime.strptime(f'{date} {time_start}', '%Y-%m-%d %H:%M:%S')
-        # date_time_end = datetime.strptime(f'{date} {time_end}', '%Y-%m-%d %H:%M:%S')
-
         actions = []
-
         # Actuate the strategy at each window.
         for row_idx in range(len(data_out.index)):
             start_idx = max(0, row_idx - Simulator.WINDOW)
             df_section: pd.DataFrame = data_out.iloc[start_idx:row_idx, :]
 
-            actions.append(strategy.act(df_section))
+            action = strategy.act(df_section)
+            actions.append(action)
 
+        # Add strategy actions as new dataframe column.
         data_out['action'] = pd.Series(actions)
 
         return data_out
@@ -133,19 +129,49 @@ class Simulator:
         """Runs simulation of strategy over list of files. Produces list of 'TradingPeriods', one for each file."""
         print(f'-- SIMULATION START --')
         print(f'{str(strategy)}')
-        for data_file in data_files:
-            print(f'Simulating: {data_file}')
+        for data_path in data_files:
+            print(f'Simulating: {data_path}')
 
-            data_period: pd.DataFrame = Simulator.run_period(strategy, data_file)
-            data_valid = validate_actions(data_period)
+            data_period: pd.DataFrame = Simulator.run_period(strategy, data_path)
+            data_valid: pd.DataFrame = Simulator.validate_actions(data_period)
 
-            path_simulated = DATA_SIMULATED.joinpath(*data_file.parts[2:])
+            path_simulated = DATA_SIMULATED.joinpath(str(strategy)).joinpath(*data_path.parts[2:])
             path_simulated.parent.mkdir(parents=True, exist_ok=True)
 
             data_valid.to_csv(path_simulated, index=False)
 
 
+@dataclass
+class Trade:
+    nbr_shares: int  # Positive=BUY, negative=SELL.
+    price: float
+
+
+@dataclass
+class Result:
+    balance: float
+    trades: list[Trade]
+
+
 class Analyzer:
+    @staticmethod
+    def evaluate(df: pd.DataFrame) -> Result:
+        """Evalutes simulated data."""
+        trades = []
+
+        for idx, row in df.iterrows():
+            action = row['action']
+            if action == 0:
+                continue
+
+            trade = Trade(nbr_shares=action, price=row['close'])
+            trades.append(trade)
+
+        # TODO: Continue work...
+
+
+        return Result(0.0, [])  # TODO: Return proper result instance.
+
     @staticmethod
     def show_graph(df: pd.DataFrame):
         """Graphs columns in dataframe where actions are highlighted with points in graph."""
@@ -159,22 +185,30 @@ class Analyzer:
 
 
 def main(args):
+    if args.evaluate:
+        # TODO: Handle evaluation of multiple files.
+        data_files = list(DATA_SIMULATED.glob(f'**/{args.evaluate}*.csv'))
+        Analyzer.evaluate(pd.read_csv(data_files[0]))
+
+    if args.graph:
+        # TODO: Handle graphing when multiple strategy folders exist.
+        data_files = list(DATA_SIMULATED.glob(f'**/{args.graph}*.csv'))
+        Analyzer.show_graph(pd.read_csv(data_files[0]))
+
     if args.run_simulation:
         strategy = StrategySMA()
         data_files = list(DATA_CLEAN.glob('**/*.csv'))
         Simulator.run(strategy, data_files)
 
-    if args.graph:
-        data_file = DATA_SIMULATED / f'1min/{args.graph}.csv'
-        Analyzer.show_graph(pd.read_csv(data_file))
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='Stock data collector', description='Gathers and cleans data.')
 
-    parser.add_argument('-r', '--run-simulation', action='store_true', help='Simulate the active strategy.')
+    parser.add_argument('-e', '--evaluate', type=str,
+                        help='Evaluate the simulation results for the specific symbol and date. E.g.: '
+                             'NVDA/2023/05/01')
     parser.add_argument('-g', '--graph', type=str,
                         help='Graph the simulation results for the specific symbol and date. E.g.: '
                              'AAPL/2023/04/03')
+    parser.add_argument('-r', '--run-simulation', action='store_true', help='Simulate the active strategy.')
 
     main(parser.parse_args())

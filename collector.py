@@ -70,7 +70,9 @@ class DataCleaner:
         symbol = filepath.parent.stem
         year, month = filename.split('-')
 
+        # Read data and adjust type of timestamp column.
         df: pd.DataFrame = pd.read_csv(filepath)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y-%m-%d %H:%M:%S')
 
         # Reverse data to make it chronological from top to bottom. Reset index to enumerate from top to bottom.
         df = df.iloc[::-1]
@@ -94,7 +96,7 @@ class DataCleaner:
 
         # Get each sub-dataframe and write to file.
         for date in dates:
-            data_file_path = data_folder_clean / f'{date.split("-")[2]}.csv'
+            data_file_path = data_folder_clean / f'{str(date).split("-")[2]}.csv'
 
             sub_df: pd.DataFrame = group_by.get_group(date)
             sub_df.to_csv(data_file_path, index=False)

@@ -72,7 +72,6 @@ class DataCleaner:
 
         # Read data and adjust type of timestamp column.
         df: pd.DataFrame = pd.read_csv(filepath)
-        df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y-%m-%d %H:%M:%S')
 
         # Reverse data to make it chronological from top to bottom. Reset index to enumerate from top to bottom.
         df = df.iloc[::-1]
@@ -114,7 +113,7 @@ class DataCleaner:
 def main(args):
     if args.gather:
         for symbol in stock_symbols:
-            if DataGatherer.symbol_data_to_file(symbol, '2023-05'):
+            if DataGatherer.symbol_data_to_file(symbol, '2023-03'):
                 time.sleep(12)
 
     if args.clean:
@@ -124,6 +123,6 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='Stock data collector', description='Gathers and cleans data.')
     parser.add_argument('-c', '--clean', action='store_true', help='Cleans data if set.')
-    parser.add_argument('-g', '--gather', action='store_true', help='List of stock symbols. E.g. TSLA AAPL')
+    parser.add_argument('-g', '--gather', action='store_true', help='Gathers data (hardcoded source for now)')
 
     main(parser.parse_args())

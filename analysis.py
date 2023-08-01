@@ -12,7 +12,19 @@ from pprint import PrettyPrinter
 
 DATA_CLEAN: Path = Path('./data/clean')
 DATA_SIMULATED: Path = Path('./data/simulated')
-PP = PrettyPrinter(indent=2)
+PP = PrettyPrinter(indent=2, depth=1)
+
+
+def filter_files(file_paths: list[Path], filter_strs: list[str]) -> list[Path]:
+    filtered_data_files = []
+
+    for f in file_paths:
+        for arg in filter_strs:
+            if arg in str(f):
+                filtered_data_files.append(f)
+                break
+
+    return filtered_data_files
 
 
 class Strategy(ABC):
@@ -89,15 +101,19 @@ class Simulator:
         data_valid = data_in.copy(deep=True)
         nr_shares = 0
 
-        for index, row in data_valid.iterrows():
+        nbr_rows = len(data_valid.index)
+        for idx, row in data_valid.iterrows():
             action = row['action']
 
-            if action > 0:
+            if idx == nbr_rows - 1:
+                # Force sell all held stocks at final sample point.
+                data_valid.at[idx, 'action'] = -nr_shares
+            elif action > 0:
                 nr_shares += action
             elif action < 0:
                 if abs(action) > nr_shares:
                     action = -nr_shares
-                    data_valid.at[index, 'action'] = action
+                    data_valid.at[idx, 'action'] = action
                 nr_shares += action
 
         return data_valid
@@ -110,12 +126,14 @@ class Simulator:
         # Create DataFrame section with indicator values.
         data_out = Simulator.prepare_dataframe(strategy, data_clean)
 
-        actions = []
+        actions: list[int] = []
+        nbr_rows = len(data_out.index)
         # Actuate the strategy at each window.
-        for row_idx in range(len(data_out.index)):
+        for row_idx in range(nbr_rows):
             start_idx = max(0, row_idx - Simulator.WINDOW)
             df_section: pd.DataFrame = data_out.iloc[start_idx:row_idx, :]
 
+            # At final row, force sell held stocks to finish day without stocks in account.
             action = strategy.act(df_section)
             actions.append(action)
 
@@ -149,13 +167,39 @@ class Trade:
 
 @dataclass
 class Result:
-    balance: float
-    trades: list[Trade]
+    perc_yield: float  # The yield for simulated period as nbr of stocks gained. E.g. 0.3 = +0.3 * stock price.
+    trades: list[Trade]  # List of trades performed during simulated period.
+    sim_file: Path = None
 
 
 class Analyzer:
     @staticmethod
-    def evaluate(df: pd.DataFrame) -> Result:
+    def calculate_balance(trades: list[Trade]):
+        running_balance = 0.0
+
+        for trade in trades:
+            running_balance -= trade.nbr_shares * trade.price
+
+        return running_balance
+
+    @staticmethod
+    def evaluate(files: list[Path]):
+        results: list[Result] = []
+
+        for f in files:
+            df = pd.read_csv(f)
+
+            result = Analyzer.evaluate_sim(df)
+            result.sim_file = f
+
+            results.append(result)
+
+        PP.pprint(results)
+
+        print(f'Evaluation complete...')
+
+    @staticmethod
+    def evaluate_sim(df: pd.DataFrame) -> Result:
         """Evalutes simulated data."""
         trades = []
 
@@ -167,48 +211,77 @@ class Analyzer:
             trade = Trade(nbr_shares=action, price=row['close'])
             trades.append(trade)
 
-        # TODO: Continue work...
+        day_initial_price = df['close'][0]
+        balance = Analyzer.calculate_balance(trades)
+        perc_yield = balance / day_initial_price
 
-
-        return Result(0.0, [])  # TODO: Return proper result instance.
+        return Result(perc_yield, trades)
 
     @staticmethod
-    def show_graph(df: pd.DataFrame):
+    def show_graph(df: pd.DataFrame, title: str):
         """Graphs columns in dataframe where actions are highlighted with points in graph."""
         # date, time, close, [indicators], actions
         ax = df.plot(x='time', y=list(range(2, len(df.columns) - 1)), kind='line', zorder=1)
 
         # Plot actions conditionally.
-        cmap, norm = mcolors.from_levels_and_colors(levels=[-1, 0, 2], colors=['#ff1934', '#1cd100'])
-        ax.scatter(df['time'], df['close'], s=abs(df['action'] * 15), c=df['action'], cmap=cmap, norm=norm, zorder=2)
+        cmap, norm = mcolors.from_levels_and_colors(levels=[-100, 0, 100], colors=['#ff1934', '#1cd100'])
+        ax.scatter(df['time'], df['close'],
+                   s=abs(df['action'] * 20),
+                   c=df['action'],
+                   cmap=cmap,
+                   norm=norm,
+                   zorder=2)
+        plt.title(title)
         plt.show()
+
+    @staticmethod
+    def show_graphs(data_files: list[Path]):
+        for f in data_files:
+            Analyzer.show_graph(pd.read_csv(f), str(f))
 
 
 def main(args):
-    if args.evaluate:
-        # TODO: Handle evaluation of multiple files.
-        data_files = list(DATA_SIMULATED.glob(f'**/{args.evaluate}*.csv'))
-        Analyzer.evaluate(pd.read_csv(data_files[0]))
+    if args.evaluate is not None:
+        # TODO: Add function to calculate expected value if stocks were owned from start to finish.
+
+        data_files = list(DATA_SIMULATED.glob('**/*.csv'))
+
+        # Filter data files if arguments are given.
+        if args.evaluate:
+            data_files = filter_files(data_files, args.evaluate)
+        Analyzer.evaluate(data_files)
 
     if args.graph:
         # TODO: Handle graphing when multiple strategy folders exist.
-        data_files = list(DATA_SIMULATED.glob(f'**/{args.graph}*.csv'))
-        Analyzer.show_graph(pd.read_csv(data_files[0]))
+        data_files = list(DATA_SIMULATED.glob('**/*.csv'))
+        data_files = filter_files(data_files, args.graph)
+        Analyzer.show_graphs(data_files)
 
-    if args.run_simulation:
+    # When run_simulation is not None, the argument has been given but may still be empty.
+    if args.run_simulation is not None:
         strategy = StrategySMA()
         data_files = list(DATA_CLEAN.glob('**/*.csv'))
+
+        # Filter data files if arguments are given.
+        if args.run_simulation:
+            data_files = filter_files(data_files, args.run_simulation)
+
         Simulator.run(strategy, data_files)
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(prog='Stock data collector', description='Gathers and cleans data.')
 
-    parser.add_argument('-e', '--evaluate', type=str,
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(prog='Stock data collector', description='Gathers and cleans data.',
+                                     formatter_class=argparse.RawTextHelpFormatter)
+
+    parser.add_argument('-e', '--evaluate', type=str, nargs='*',
                         help='Evaluate the simulation results for the specific symbol and date. E.g.: '
                              'NVDA/2023/05/01')
-    parser.add_argument('-g', '--graph', type=str,
-                        help='Graph the simulation results for the specific symbol and date. E.g.: '
-                             'AAPL/2023/04/03')
-    parser.add_argument('-r', '--run-simulation', action='store_true', help='Simulate the active strategy.')
+    parser.add_argument('-g', '--graph', type=str, nargs='+',
+                        help='Graph the simulation results. Supply string selectors to filter files. E.g.: '
+                             'AAPL\\2023\\04\\03')
+    parser.add_argument('-r', '--run-simulation', type=str, nargs='*',
+                        help='Simulate the active strategy. Supply string selectors to filter files. E.g.\n'
+                             '\tTSLA NVDA\t\t to only select Tesla and Nvidia stock, or\n'
+                             '\tTSLA\\2023 MSFT\t\t to only select Tesla 2023 and all Microsoft files.    ')
 
     main(parser.parse_args())

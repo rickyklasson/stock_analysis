@@ -113,7 +113,7 @@ class DataCleaner:
 def main(args):
     if args.gather:
         for symbol in stock_symbols:
-            if DataGatherer.symbol_data_to_file(symbol, '2023-03'):
+            if DataGatherer.symbol_data_to_file(symbol, '2022-08'):
                 time.sleep(12)
 
     if args.clean:

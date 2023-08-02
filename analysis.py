@@ -1,14 +1,12 @@
 import argparse
-import indicator
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import pandas as pd
-import random
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from pprint import PrettyPrinter
+from strategies import Strategy, StrategyEMA
 
 DATA_CLEAN: Path = Path('./data/clean')
 DATA_SIMULATED: Path = Path('./data/simulated')
@@ -27,57 +25,6 @@ def filter_files(file_paths: list[Path], filter_strs: list[str]) -> list[Path]:
     return filtered_data_files
 
 
-class Strategy(ABC):
-    _indicators: list  # The indicators used for this strategy
-
-    @property
-    @abstractmethod
-    def indicators(self) -> list:
-        return self._indicators
-
-    @abstractmethod
-    def act(self, df: pd.DataFrame):
-        pass
-
-    @abstractmethod
-    def indicator_labels(self) -> list:
-        pass
-
-
-class StrategySMA(Strategy):
-    """Defines a trading strategy."""
-    FIRST_TRADE_IDX = 80
-    SMA_20 = 0  # Index of indicator.
-    SMA_60 = 1  # Index of indicator.
-
-    def __init__(self):
-        self._indicators = [indicator.SMA(20), indicator.SMA(60)]
-
-    @property
-    def indicators(self) -> list:
-        return self._indicators
-
-    def indicator_labels(self) -> list:
-        return [str(ind) for ind in self._indicators]
-
-    def act(self, df: pd.DataFrame) -> int:
-        """Returns number of shares to buy(>0) or sell(<0)."""
-        if df.shape[0] < StrategySMA.FIRST_TRADE_IDX:
-            return 0
-
-        rng = random.randint(0, 99)
-
-        if rng < 5:
-            return 1
-        elif rng > 90:
-            return -1
-        else:
-            return 0
-
-    def __str__(self):
-        return f'strategy_{"_".join(self.indicator_labels())}'
-
-
 class Simulator:
     WINDOW = 100  # TODO: Should this be hardcoded or up to the strategy to decide?
 
@@ -86,8 +33,8 @@ class Simulator:
         # Keep the 'date', 'time', 'close' and add the indicator columns.
         df_ret = pd.DataFrame()
 
-        df_ret['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
-        df_ret['time'] = pd.to_datetime(df['time'], format='%H:%M:%S')
+        df_ret['date'] = df['date']
+        df_ret['time'] = df['time']
         df_ret['close'] = df['close']
 
         for ind in strategy.indicators:
@@ -106,7 +53,7 @@ class Simulator:
             action = row['action']
 
             if idx == nbr_rows - 1:
-                # Force sell all held stocks at final sample point.
+                # Sell all held stocks at final sample point.
                 data_valid.at[idx, 'action'] = -nr_shares
             elif action > 0:
                 nr_shares += action
@@ -156,7 +103,7 @@ class Simulator:
             path_simulated = DATA_SIMULATED.joinpath(str(strategy)).joinpath(*data_path.parts[2:])
             path_simulated.parent.mkdir(parents=True, exist_ok=True)
 
-            data_valid.to_csv(path_simulated, index=False)
+            data_valid.to_csv(path_simulated, index=False, float_format='%.3f')
 
 
 @dataclass
@@ -167,7 +114,9 @@ class Trade:
 
 @dataclass
 class Result:
-    perc_yield: float  # The yield for simulated period as nbr of stocks gained. E.g. 0.3 = +0.3 * stock price.
+    baseline_yield: float  # The percentage movement for the stock during the period.
+    trades_yield: float  # The yield for simulated period as nbr of stocks gained. E.g. 0.3 = +0.3 * stock price.
+    value: float  # The difference between the trades_yield and baseline_yield. >0 is good, <0 is bad.
     trades: list[Trade]  # List of trades performed during simulated period.
     sim_file: Path = None
 
@@ -183,6 +132,23 @@ class Analyzer:
         return running_balance
 
     @staticmethod
+    def display(results: list[Result]):
+        nbr_periods = len(results)
+        pos_value_periods = 0
+
+        print(f'{"FILE":>24s} {"TRADES":>10s} {"BASELINE":>10s} {"YIELD":>10s} {"VALUE":>10s}')
+        for res in results:
+            print(f'{str(res.sim_file)[-20:]:>24s} {len(res.trades):>10d} {res.baseline_yield:>10.4f} '
+                  f'{res.trades_yield:>10.4f} {res.value:>10.4f}')
+            if res.value > 0:
+                pos_value_periods += 1
+
+        print(f'-----------------------')
+        print(f'Periods:\t{nbr_periods}')
+        print(f'Total value:\t{sum([res.value for res in results])}')
+        print(f'Periods of positive value: {pos_value_periods}/{nbr_periods}')
+
+    @staticmethod
     def evaluate(files: list[Path]):
         results: list[Result] = []
 
@@ -191,12 +157,11 @@ class Analyzer:
 
             result = Analyzer.evaluate_sim(df)
             result.sim_file = f
+            result.value = result.trades_yield - result.baseline_yield
 
             results.append(result)
 
-        PP.pprint(results)
-
-        print(f'Evaluation complete...')
+        Analyzer.display(results)
 
     @staticmethod
     def evaluate_sim(df: pd.DataFrame) -> Result:
@@ -211,11 +176,14 @@ class Analyzer:
             trade = Trade(nbr_shares=action, price=row['close'])
             trades.append(trade)
 
-        day_initial_price = df['close'][0]
+        initial_price = df.iloc[0]['close']
+        baseline_yield = (df.iloc[-1]['close'] - df.iloc[0]['close']) / df.iloc[0]['close']
         balance = Analyzer.calculate_balance(trades)
-        perc_yield = balance / day_initial_price
+        perc_yield = balance / initial_price
 
-        return Result(perc_yield, trades)
+        value = perc_yield - baseline_yield
+
+        return Result(baseline_yield, perc_yield, value, trades)
 
     @staticmethod
     def show_graph(df: pd.DataFrame, title: str):
@@ -243,7 +211,6 @@ class Analyzer:
 def main(args):
     if args.evaluate is not None:
         # TODO: Add function to calculate expected value if stocks were owned from start to finish.
-
         data_files = list(DATA_SIMULATED.glob('**/*.csv'))
 
         # Filter data files if arguments are given.
@@ -252,14 +219,13 @@ def main(args):
         Analyzer.evaluate(data_files)
 
     if args.graph:
-        # TODO: Handle graphing when multiple strategy folders exist.
         data_files = list(DATA_SIMULATED.glob('**/*.csv'))
         data_files = filter_files(data_files, args.graph)
         Analyzer.show_graphs(data_files)
 
     # When run_simulation is not None, the argument has been given but may still be empty.
     if args.run_simulation is not None:
-        strategy = StrategySMA()
+        strategy = StrategyEMA()
         data_files = list(DATA_CLEAN.glob('**/*.csv'))
 
         # Filter data files if arguments are given.
@@ -283,5 +249,4 @@ if __name__ == '__main__':
                         help='Simulate the active strategy. Supply string selectors to filter files. E.g.\n'
                              '\tTSLA NVDA\t\t to only select Tesla and Nvidia stock, or\n'
                              '\tTSLA\\2023 MSFT\t\t to only select Tesla 2023 and all Microsoft files.    ')
-
     main(parser.parse_args())

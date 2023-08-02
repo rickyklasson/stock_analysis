@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 
 
-
 class TestIndicators:
     @staticmethod
     def test_sma():

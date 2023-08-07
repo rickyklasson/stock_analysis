@@ -62,7 +62,7 @@ class DataCleaner:
     def clean_file(filepath: Path):
         """Data is cleaned in the following steps:
             1) Reverse data such that it is in chronological order from top to bottom.
-            2) Split data into one file for each day. New data path should be: './data/clean/1min/AAPL/2023/05/01.csv
+            2) Split data into one file for each day. New data path should be: './data/clean/1min/AAPL/2023/05/win_60_samples_1M_close_only.csv
         """
         print(f'Cleaning file: {filepath}')
 
@@ -113,8 +113,9 @@ class DataCleaner:
 def main(args):
     if args.gather:
         for symbol in stock_symbols:
-            if DataGatherer.symbol_data_to_file(symbol, '2022-08'):
-                time.sleep(12)
+            for m in ['09', '10', '11', '12']:
+                if DataGatherer.symbol_data_to_file(symbol, f'2021-{m}'):
+                    time.sleep(12)
 
     if args.clean:
         DataCleaner.clean_data()

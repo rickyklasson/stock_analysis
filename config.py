@@ -17,5 +17,4 @@ stock_symbols = [
     'PEP',
     'TSLA',
     'TSM',
-    'V'
 ]

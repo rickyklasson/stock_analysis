@@ -241,7 +241,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-e', '--evaluate', type=str, nargs='*',
                         help='Evaluate the simulation results for the specific symbol and date. E.g.: '
-                             'NVDA/2023/05/01')
+                             'NVDA/2023/05/win_60_samples_1M_close_only')
     parser.add_argument('-g', '--graph', type=str, nargs='+',
                         help='Graph the simulation results. Supply string selectors to filter files. E.g.: '
                              'AAPL\\2023\\04\\03')

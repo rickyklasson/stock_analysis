@@ -37,10 +37,8 @@ def main(args):
 
     if args.double_check_env:
         # Double check env by printing info from a short period of random actions.
-        episodes = 2
-        data_files = [Path('./data/clean/1min/META/2022/04/22.csv'),
-                      Path('./data/clean/1min/META/2022/04/22.csv'),
-                      Path('./data/clean/1min/META/2022/04/22.csv')]
+        episodes = 1
+        data_files = list(DATA_CLEAN.glob('**/TSLA/2022/12/01.csv'))
         env = StockEnv(data_files)
 
         for ep in range(episodes):
@@ -55,14 +53,14 @@ def main(args):
                 PP.pprint(info)
 
     if args.train:
-        model_id = 'win_60_samples_1p4M_close_and_volume_LSTM_0k_start'
+        model_id = 'LSTM_SMA_RSI'
         models_dir = Path('./ml_models') / model_id
         log_dir = Path('./ml_logs') / model_id
 
         models_dir.mkdir(parents=True, exist_ok=True)
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        data_files = list(DATA_CLEAN.glob('**/*.csv'))
+        data_files = list(DATA_CLEAN.glob('**/TSLA/2022/12/01.csv'))
         env = StockEnv(data_files)
         env.reset()
 
@@ -73,7 +71,7 @@ def main(args):
         #model = PPO.load(model_path, env)
 
         timesteps = 10000
-        for i in range(1, 151):
+        for i in range(1, 51):
             model.learn(total_timesteps=timesteps, reset_num_timesteps=False)
             model.save(models_dir / f'{timesteps * i}')
 

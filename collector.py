@@ -113,8 +113,8 @@ class DataCleaner:
 def main(args):
     if args.gather:
         for symbol in stock_symbols:
-            for m in ['09', '10', '11', '12']:
-                if DataGatherer.symbol_data_to_file(symbol, f'2021-{m}'):
+            for m in ['07', '08', '09', '10', '11', '12']:
+                if DataGatherer.symbol_data_to_file(symbol, f'2020-{m}'):
                     time.sleep(12)
 
     if args.clean:

@@ -189,13 +189,13 @@ class Analyzer:
     def show_graph(df: pd.DataFrame, title: str):
         """Graphs columns in dataframe where actions are highlighted with points in graph."""
         # date, time, close, [indicators], actions
-        ax = df.plot(x='time', y=list(range(2, len(df.columns) - 1)), kind='line', zorder=1)
+        ax = df.plot(x='time', y='close', kind='line', zorder=1)
 
         # Plot actions conditionally.
-        cmap, norm = mcolors.from_levels_and_colors(levels=[-100, 0, 100], colors=['#ff1934', '#1cd100'])
+        cmap, norm = mcolors.from_levels_and_colors(levels=[0, 1, 100], colors=['#ff1934', '#1cd100'])
         ax.scatter(df['time'], df['close'],
-                   s=abs(df['action'] * 20),
-                   c=df['action'],
+                   s=df['action'].where(df['action'] == -1, 20),
+                   c=df['action'],  # 0=Sell, 1=Buy
                    cmap=cmap,
                    norm=norm,
                    zorder=2)

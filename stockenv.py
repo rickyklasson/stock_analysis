@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import random
 
+from dataclasses import dataclass
 from enum import Enum
 from finta import TA
 from gymnasium import spaces
@@ -25,6 +26,15 @@ class Positions(Enum):
         return Positions.Short if self == Positions.Long else Positions.Long
 
 
+@dataclass
+class Trade:
+    buy_tick: int
+    sell_tick: int
+    buy_price: float
+    sell_price: float
+    value: float
+
+
 class StockEnv(gym.Env):
     def __init__(self, files: list[Path]):
         super(StockEnv).__init__()
@@ -36,6 +46,7 @@ class StockEnv(gym.Env):
         self.total_reward = 0.0
         self.position = None
         self.trade_fee = 0.0
+        self.trade_history = []  # Trades performed in the current period. Returned as info on reset.
 
         self.action_space = spaces.Discrete(NBR_ACTIONS)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(OBS_WINDOW, 5), dtype=np.float64)
@@ -70,37 +81,37 @@ class StockEnv(gym.Env):
 
         return obs_df.to_numpy()
 
-    def _calculate_reward(self, action):
-        step_reward = 0.0
+    def _calculate_reward(self):
+        current_price = self.df['close'][self.current_tick]
+        last_trade_price = self.df['close'][self.last_trade_tick]
 
-        trade = False
-        if ((action == Actions.Buy.value and self.position == Positions.Short) or
-                (action == Actions.Sell.value and self.position == Positions.Long)):
-            trade = True
+        return current_price - last_trade_price
 
-        if trade:
-            current_price = self.df['close'][self.current_tick]
-            last_trade_price = self.df['close'][self.last_trade_tick]
-            price_diff = current_price - last_trade_price
+    def _save_to_history(self, buy_tick: int, sell_tick: int):
+        buy_price = self.df['close'][buy_tick]
+        sell_price = self.df['close'][sell_tick]
+        value = sell_price / buy_price
 
-            if self.position == Positions.Long:
-                step_reward += price_diff
+        trade = Trade(buy_tick, sell_tick, buy_price, sell_price, value)
 
-        return step_reward
+        self.trade_history.append(trade)
 
     def step(self, action):
-        terminated = False
-
-        step_reward = self._calculate_reward(action)
-        self.total_reward += step_reward
-
-        trade = False
         if ((action == Actions.Buy.value and self.position == Positions.Short) or
                 (action == Actions.Sell.value and self.position == Positions.Long)):
             trade = True
+        else:
+            trade = False
 
+        step_reward = 0.0
         if trade:
             self.position = self.position.opposite()
+
+            if self.position == Positions.Short:
+                step_reward = self._calculate_reward()
+                self.total_reward += step_reward
+
+            self._save_to_history(self.last_trade_tick, self.current_tick)
             self.last_trade_tick = self.current_tick
 
         observation = self._get_observation()
@@ -114,15 +125,23 @@ class StockEnv(gym.Env):
 
         self.current_tick += 1
 
+        terminated = False
         if self.current_tick == len(self.df.index):
             terminated = True
 
         return observation, step_reward, terminated, False, info
 
     def reset(self, seed=None, options=None):
+        period_info = dict(
+            trade_history=self.trade_history,
+            file_path=self.files[self.file_idx],
+            value=sum([trade.value for trade in self.trade_history])
+        )
+
+        self.trade_history: [Trade] = []
         self.current_tick = OBS_WINDOW
         self.last_trade_tick = OBS_WINDOW - 1
-        self.position = Positions.Short
+        self.position = Positions.Long
         self.total_reward = 0.
 
         self.file_idx += 1
@@ -130,8 +149,6 @@ class StockEnv(gym.Env):
             self.file_idx = 0
 
         self.df = self._prepare_df()
-
-        period_info = {}
 
         return self._get_observation(), period_info
 

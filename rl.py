@@ -1,35 +1,17 @@
 import argparse
-import gymnasium as gym
 import pandas as pd
 
 from pathlib import Path
 from pprint import PrettyPrinter
-from stable_baselines3 import A2C, PPO
+from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.evaluation import evaluate_policy
 
-from sb3_contrib import RecurrentPPO
 from stockenv import StockEnv
 
 DATA_CLEAN = Path('./data/clean')
 DATA_SIMULATED = Path('./data/simulated')
-PP = PrettyPrinter(indent=2)
-
-
-def write_to_sim_file(in_file: Path, sim_file: Path, actions: dict[int, int]):
-    df = pd.read_csv(in_file)
-    actions_list = []
-    for idx in range(max(actions.keys()) + 1):
-        if idx in actions.keys():
-            val = actions[idx]
-        else:
-            val = -1
-        actions_list.append(val)
-
-    df['action'] = pd.Series(actions_list)
-
-    sim_file.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(sim_file, index=False)
+PP = PrettyPrinter(indent=2, depth=2)
 
 
 def main(args):
@@ -76,24 +58,23 @@ def main(args):
             model.save(models_dir / f'{timesteps * i}')
 
     if args.simulate:
-        data_files = list(DATA_CLEAN.glob('**/TSLA/2022/12/*.csv'))
+        data_files = list(DATA_CLEAN.glob('**/TSLA/2022/12/01.csv'))
         env = StockEnv(data_files)
-        model_name = 'PPO_SMA_RSI_TSLA_2022_12_2M_ticks'
-        model = PPO.load(f'ml_models/saved/{model_name}.zip', env=env)
+        model = PPO.load(args.simulate, env=env)
 
-        obs, info = env.reset()
-        actions = {}
+        obs, _ = env.reset()
         episodes = 0
         while True:
             action = model.predict(obs)
             obs, reward, terminated, _, info = env.step(action)
 
-            actions[info['tick']] = int(action[0])
-
             if terminated:
-                sim_file = DATA_SIMULATED / model_name / Path('/'.join(Path(info['file']).parts[2:]))
-                write_to_sim_file(Path(info['file']), sim_file, actions)
-                env.reset()
+                _, period_info = env.reset()
+                PP.pprint(period_info)
+
+                #sim_file = DATA_SIMULATED / model_name / Path('/'.join(Path(info['file']).parts[2:]))
+                #write_to_sim_file(Path(info['file']), sim_file, actions)
+
                 episodes += 1
                 if episodes == len(data_files):
                     break
@@ -115,8 +96,8 @@ if __name__ == '__main__':
     parser.add_argument('-dch', '--double-check-env', action='store_true',
                         help='Double check env by running a few episodes.')
     parser.add_argument('-t', '--train', action='store_true', help='Train RL model on stock data.')
-    parser.add_argument('-s', '--simulate', action='store_true',
-                        help='Simulate trained model and generate output data.')
+    parser.add_argument('-s', '--simulate', type=str,
+                        help='Simulate supplied model and generate simulated data.')
     parser.add_argument('-ev', '--evaluate', action='store_true',
                         help='Evaluate model by running a few episodes.')
     main(parser.parse_args())

@@ -192,10 +192,10 @@ class Analyzer:
         ax = df.plot(x='time', y='close', kind='line', zorder=1)
 
         # Plot actions conditionally.
-        cmap, norm = mcolors.from_levels_and_colors(levels=[0, 1, 100], colors=['#ff1934', '#1cd100'])
+        cmap, norm = mcolors.from_levels_and_colors(levels=[-1, 1, 100], colors=['#ff1934', '#1cd100'])
         ax.scatter(df['time'], df['close'],
-                   s=df['action'].where(df['action'] == -1, 20),
-                   c=df['action'],  # 0=Sell, 1=Buy
+                   s=abs(df['action']) * 20,
+                   c=df['action'],
                    cmap=cmap,
                    norm=norm,
                    zorder=2)

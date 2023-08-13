@@ -13,6 +13,7 @@ DATA_CLEAN = Path('./data/clean')
 DATA_SIMULATED = Path('./data/simulated')
 PP = PrettyPrinter(indent=2, depth=1, width=180)
 
+
 def trades_to_actions(trades: list[Trade], nr_rows: int) -> pd.Series:
     actions = []
     buy_ticks = [trade.buy_tick for trade in trades]
@@ -56,22 +57,27 @@ def main(args):
             PP.pprint(period_info)
 
     if args.train:
-        model_id = 'PPO_SMA_RSI_TSLA_2022_12_01_RSI_CLOSE_VOLUME_SMI_OBV_LONG'
-        models_dir = Path('./ml_models') / model_id
-        log_dir = Path('./ml_logs') / model_id
+        model_name = 'PPO_SMA_RSI_TSLA_2022_12_RSI_CLOSE_VOLUME_SMI_OBV_LONG'
+        models_dir = Path('./ml_models') / model_name
+        log_dir = Path('./ml_logs') / model_name
 
         models_dir.mkdir(parents=True, exist_ok=True)
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        data_files = list(DATA_CLEAN.glob('**/TSLA/2022/12/01.csv'))
+        data_files = list(DATA_CLEAN.glob('**/TSLA/2022/12/*.csv'))
         env = StockEnv(data_files)
         env.reset()
+
+        print('---- Model training start ----')
+        print('Files included in training:')
+        PP.pprint(data_files)
+        print(f'Model name: {model_name}')
 
         model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=str(log_dir), device='cpu')
         #model = PPO.load('ml_models/PPO_SMA_RSI_TSLA_2022_12_RSI_CLOSE_VOLUME_SMI_OBV/1240000.zip', env=env)
 
         timesteps = 10000
-        for i in range(1, 13):
+        for i in range(1, 191):
             model.learn(total_timesteps=timesteps, reset_num_timesteps=False)
             model.save(models_dir / f'{timesteps * i}')
 
